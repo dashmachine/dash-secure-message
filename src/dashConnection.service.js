@@ -20,7 +20,7 @@ module.exports = class DashConnection {
   constructor(network, mnemonic, apps, seeds) {
     debug(`Creating new connection`);
     this._optionBuilder = {};
-    this._network = network || 'testnet';
+    this._network = network || 'evonet';
     this._optionBuilder.network = this._network;
     this._mnemonic = mnemonic;
     this._optionBuilder.mnemonic = this._mnemonic;

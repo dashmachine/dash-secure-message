@@ -1,6 +1,6 @@
 {
   "name": "dash-secure-message",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "encryption utility library for message sending on Dash Platform",
   "main": "src/dash-secure-message.js",
   "scripts": {
@@ -41,6 +41,7 @@
     "@babel/plugin-transform-runtime": "^7.9.6",
     "@babel/runtime": "^7.9.6",
     "bitcore-ecies-dash": "^1.0.4",
+    "buffer-split": "^1.0.0",
     "dashcore-lib": "^8.2.3"
   }
 }

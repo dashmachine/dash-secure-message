@@ -73,29 +73,67 @@ module.exports = class DashSecureMessage {
      * @param {object} recipientPublicKey The public key for the Identity of the Dash User receiveing the message
      * @returns {string} The encrypted message
      */
-    static encrypt(senderPrivateKey, message, recipientPublicKey) {
+    static encrypt(senderPrivateKey, message, recipientPublicKey, options) {
         //console.log(`encrypting following message:\n${message}`);
+        let publicKeyToUse;
+        publicKeyToUse = recipientPublicKey;
+
+        const binary = options.binary || false;
+        let delimiter;
+        if(binary){
+            delimiter = options.delimiter || '  ';
+        }
+
         try {
+            const doEncryption = function () {
+                //Convert Keys to DER format using Dashcore Library
+                const recipientPublicKeyBuffer = Buffer.from(publicKeyToUse, 'base64')
+                //console.log(`recipientPublicKeyBuffer: ${recipientPublicKeyBuffer}`)
+                const recipientPublicKeyFromBuffer = new Dashcore.PublicKey(recipientPublicKeyBuffer)
+                //console.log(`recipientPublicKeyFromBuffer ${recipientPublicKeyFromBuffer}`)
+                const signingKey = new Dashcore.PrivateKey(senderPrivateKey)
 
-            //Convert Keys to DER format using Dashcore Library
-            const recipientPublicKeyBuffer = Buffer.from(recipientPublicKey, 'base64')
-            //console.log(`recipientPublicKeyBuffer: ${recipientPublicKeyBuffer}`)
-            const recipientPublicKeyFromBuffer = new Dashcore.PublicKey(recipientPublicKeyBuffer)
-            //console.log(`recipientPublicKeyFromBuffer ${recipientPublicKeyFromBuffer}`)
-            const signingKey = new Dashcore.PrivateKey(senderPrivateKey)
+                //sender encrypts
+                const sender = ECIES()
+                    .privateKey(signingKey)
+                    .publicKey(recipientPublicKeyFromBuffer);
 
-            //sender encrypts
-            const sender = ECIES()
-                .privateKey(signingKey)
-                .publicKey(recipientPublicKeyFromBuffer);
+                const encrypted = sender.encrypt(message);
 
-            const encrypted = sender.encrypt(message);
-            //return Hex of the stringified JSON of the reult buffer
-            const encryptedToHex = Buffer.from(JSON.stringify(encrypted)).toString('base64');
-            //console.log(`encrypted: ${encryptedToHex}`);
+                //console.log("ENCRYPTED BYTES", encrypted)
 
-            return encryptedToHex;
-            //return { success: true, data: encrypted};
+                if (!binary) {
+                    //return B64 of the stringified JSON of the reult buffer
+                    const encryptedToB64 = Buffer.from(JSON.stringify(encrypted)).toString('base64');
+                    //console.log(`encrypted: ${encryptedToB64}`);
+
+                    return encryptedToB64;
+                }
+                else {
+                    return encrypted;
+                }
+            }
+
+            if (Array.isArray(recipientPublicKey)) {
+                if (binary) {
+                    return joinBuffers(recipientPublicKey.map(k => {
+                        publicKeyToUse = k;
+                        return doEncryption();
+                    }), delimiter)
+
+                }
+                else {
+                    //return an array containing encrypted msg for each public key
+                    return recipientPublicKey.map(k => {
+                        publicKeyToUse = k;
+                        return [k, doEncryption()];
+                    })
+                }
+            }
+            else {
+                return doEncryption();
+            }
+
         } catch (e) {
             //console.log(`encrypt error: ${e}`)
             throw e;
@@ -113,26 +151,97 @@ module.exports = class DashSecureMessage {
      * @param {object} senderPublicKey The public key for the Identity of the Dash User sending the message
      * @returns {string} The decrypted message
      */
-    static decrypt(recipientPrivateKey, encryptedMessage, senderPublicKey) {
+    static decrypt(recipientPrivateKey, encryptedMessage, senderPublicKey, options) {
         try {
+            let toDecrypt;
+            
+            let messageToDecrypt;
+            messageToDecrypt = encryptedMessage;
+            let inputIsArray;
+            let arrayToDecrypt;
 
-        
+            const binary = options.binary || false;
+            let delimiter;
+            if(binary){
+                delimiter = options.delimiter || '  ';
+            }
 
-            const senderPublicKeyBuffer = Buffer.from(senderPublicKey, 'base64')
-            //console.log(`senderPublicKeyBuffer: ${senderPublicKeyBuffer}`)
-            const senderPublicKeyFromBuffer = new Dashcore.PublicKey(senderPublicKeyBuffer)
-            //console.log(`senderPublicKeyFromBuffer ${senderPublicKeyFromBuffer}`)
 
-            const decryptingKey = new Dashcore.PrivateKey(recipientPrivateKey)
+            const doDecryption = function () {
+                const senderPublicKeyBuffer = Buffer.from(senderPublicKey, 'base64')
+                //console.log(`senderPublicKeyBuffer: ${senderPublicKeyBuffer}`)
+                const senderPublicKeyFromBuffer = new Dashcore.PublicKey(senderPublicKeyBuffer)
+                //console.log(`senderPublicKeyFromBuffer ${senderPublicKeyFromBuffer}`)
 
-            const recipient = ECIES()
-                .privateKey(decryptingKey)
-                .publicKey(senderPublicKeyFromBuffer);
+                const decryptingKey = new Dashcore.PrivateKey(recipientPrivateKey)
 
-            const decrypted = recipient.decrypt(Buffer.from(JSON.parse(Buffer.from(encryptedMessage, 'base64').toString()).data));
-            //console.log(`decrypted: ${decrypted}`);
+                const recipient = ECIES()
+                    .privateKey(decryptingKey)
+                    .publicKey(senderPublicKeyFromBuffer);
 
-            return Buffer.from(decrypted).toString();
+                
+                if (!binary) {
+                    toDecrypt = Buffer.from(JSON.parse(Buffer.from(messageToDecrypt, 'base64').toString()).data)
+                }
+                
+                else {
+                    
+                    toDecrypt = messageToDecrypt
+                }
+                
+
+                const decrypted = recipient.decrypt(toDecrypt);
+                //console.log(`decrypted: ${decrypted}`);
+
+                return Buffer.from(decrypted).toString();
+
+            }
+
+            
+
+            if (binary) {
+                //TODO: is this single or multiple messages
+                const bsplit = require('buffer-split');
+                const delimBuffer = Buffer.from(delimiter);
+                //console.log("delimBuffer", delimBuffer);
+                const splitResult = bsplit(encryptedMessage, delimBuffer);
+                const numBuffers = splitResult.length;
+                //console.log("number of buffers", numBuffers);
+                if (numBuffers > 1) {
+                    inputIsArray = true;
+                    arrayToDecrypt = splitResult
+                }
+            }
+
+            if (Array.isArray(encryptedMessage)) {
+                inputIsArray = true;
+                arrayToDecrypt = encryptedMessage;
+            }
+
+            if (inputIsArray) {
+                //brute force attempt to decrypt for each message with this key
+                const result = arrayToDecrypt.map(m => {
+                    messageToDecrypt = m;
+                    //console.log("attemping to decrypt:", m);
+                    try {
+
+                        return [m, doDecryption()];
+
+                    }
+                    catch (e) {
+                        //console.log("error decrypting this message with the private key");
+                        return null
+                    }
+
+                });
+                return result.filter(r => r != null);
+            }
+            else {
+                return doDecryption();
+            }
+
+
+
 
         } catch (e) {
             //console.log(`decrypt error: ${e}`)
@@ -182,10 +291,10 @@ module.exports = class DashSecureMessage {
         try {
             const hashed = this.hash(message);
             if (hashed === digest) {
-                return  true ;
+                return true;
             }
             else {
-                return false ;
+                return false;
             }
         } catch (e) {
             //console.log(`hash error: ${e}`)
@@ -197,7 +306,7 @@ module.exports = class DashSecureMessage {
      * 
      * @static generateEntropy generates random entropy (a dash address)
      * 
-     * @returns {string} A dash address fro use as entropy
+     * @returns {string} A dash address for use as entropy
      */
     static generateEntropy() {
         try {
@@ -209,4 +318,11 @@ module.exports = class DashSecureMessage {
 
     }
 
+}
+
+function joinBuffers(buffers, delimiter = '  ') {
+    let d = Buffer.from(delimiter);
+    //console.log("delimiter as bytes", d);
+    //console.log("buffers", buffers)
+    return buffers.reduce((prev, b) => Buffer.concat([prev, d, b]));
 }
