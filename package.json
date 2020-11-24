@@ -1,6 +1,6 @@
 {
   "name": "dash-secure-message",
-  "version": "1.1.0",
+  "version": "16.0.0",
   "description": "encryption utility library for message sending on Dash Platform",
   "main": "src/dash-secure-message.js",
   "scripts": {
