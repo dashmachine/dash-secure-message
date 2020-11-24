@@ -1,6 +1,8 @@
 // imports
 const Dashcore = require('dashcore-lib');
 const ECIES = require('bitcore-ecies-dash');
+
+
 const crypto = require('crypto');
 const debug = require('debug')('server:debug'); //not used - uncomment console.log for testing
 
@@ -80,7 +82,7 @@ module.exports = class DashSecureMessage {
 
         const binary = options.binary || false;
         let delimiter;
-        if(binary){
+        if (binary) {
             delimiter = options.delimiter || '  ';
         }
 
@@ -152,23 +154,37 @@ module.exports = class DashSecureMessage {
      * @returns {string} The decrypted message
      */
     static decrypt(recipientPrivateKey, encryptedMessage, senderPublicKey, options) {
+
         try {
             let toDecrypt;
-            
+
             let messageToDecrypt;
-            messageToDecrypt = encryptedMessage;
+
+            if (options.useOutput) {
+
+            }
+            else {
+                messageToDecrypt = encryptedMessage;
+            }
             let inputIsArray;
             let arrayToDecrypt;
 
             const binary = options.binary || false;
             let delimiter;
-            if(binary){
+            if (binary) {
                 delimiter = options.delimiter || '  ';
             }
 
 
             const doDecryption = function () {
-                const senderPublicKeyBuffer = Buffer.from(senderPublicKey, 'base64')
+                let senderPublicKeyToUse;
+                if (options.useOutput) {
+
+                }
+                else {
+                    senderPublicKeyToUse = senderPublicKey;
+                }
+                const senderPublicKeyBuffer = Buffer.from(senderPublicKeyToUse, 'base64')
                 //console.log(`senderPublicKeyBuffer: ${senderPublicKeyBuffer}`)
                 const senderPublicKeyFromBuffer = new Dashcore.PublicKey(senderPublicKeyBuffer)
                 //console.log(`senderPublicKeyFromBuffer ${senderPublicKeyFromBuffer}`)
@@ -179,16 +195,16 @@ module.exports = class DashSecureMessage {
                     .privateKey(decryptingKey)
                     .publicKey(senderPublicKeyFromBuffer);
 
-                
+
                 if (!binary) {
                     toDecrypt = Buffer.from(JSON.parse(Buffer.from(messageToDecrypt, 'base64').toString()).data)
                 }
-                
+
                 else {
-                    
+
                     toDecrypt = messageToDecrypt
                 }
-                
+
 
                 const decrypted = recipient.decrypt(toDecrypt);
                 //console.log(`decrypted: ${decrypted}`);
@@ -197,7 +213,7 @@ module.exports = class DashSecureMessage {
 
             }
 
-            
+
 
             if (binary) {
                 //TODO: is this single or multiple messages
